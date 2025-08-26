@@ -1,0 +1,10 @@
+ANONYMIZATION MAPPING
+========================================
+Original File -> Anonymous ID
+----------------------------------------
+ECG_20070321_110542_191010101010.SCP -> ANON000001
+ECG_20170504_163507_123456789.SCP -> ANON000002
+ECG_20081029_105642_191010101010.SCP -> ANON000003
+ECG_20060620_112352_197001138994.SCP -> ANON000004
+
+Note: This mapping should be kept secure and separate from anonymized data.

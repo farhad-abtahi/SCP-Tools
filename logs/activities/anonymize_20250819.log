@@ -1,0 +1,9 @@
+2025-08-19 22:46:04 | INFO | START: Anonymizing ECG_20170504_163507_123456789.SCP
+2025-08-19 22:46:04 | INFO |   Read 21910 bytes
+2025-08-19 22:46:04 | INFO |   Anonymization complete: 4 changes
+2025-08-19 22:46:04 | INFO |   Saved to data/anonymized/test_log.SCP
+2025-08-19 22:46:04 | INFO |   Change: Replaced 1 instances of ID '123456789'
+2025-08-19 22:46:04 | INFO |   Change: Replaced 2 instances of 'test' with 'ANON'
+2025-08-19 22:46:04 | INFO |   Change: Anonymized Patient ID
+2025-08-19 22:46:04 | INFO |   Change: Anonymized Last name
+2025-08-19 22:46:04 | INFO | SUCCESS: Anonymizing ECG_20170504_163507_123456789.SCP (Duration: 0.00s)
