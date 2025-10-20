@@ -50,6 +50,83 @@ class SCPAnonymizer:
                 crc &= 0xFFFF
         return crc
 
+    @staticmethod
+    def calculate_scp_section_crc(data):
+        """
+        Calculate SCP-ECG section CRC as used in parsescp.c from PhysioNet.
+        This is the proper CRC algorithm for individual SCP-ECG sections.
+
+        Args:
+            data: bytes or bytearray to calculate CRC for
+
+        Returns:
+            16-bit CRC value
+        """
+        crchigh = 0xFF
+        crclow = 0xFF
+
+        for byte_val in data:
+            # XOR with crchigh
+            crchigh = a = byte_val ^ crchigh
+
+            # a >>= 4
+            a >>= 4
+
+            # a ^= crchigh
+            a ^= crchigh
+
+            # crchigh = crclow
+            crchigh = crclow
+
+            # crclow = a
+            crclow = a
+
+            # b = (a & 0xf) << 4
+            b = (a & 0xF) << 4
+
+            # a >>= 4
+            a >>= 4
+
+            # b = a |= b
+            a |= b
+            b = a
+
+            # if (a & 0x80) a = (a << 1) | 1; else a <<= 1
+            if a & 0x80:
+                a = (a << 1) | 1
+            else:
+                a <<= 1
+            a &= 0xFF  # Keep it 8-bit
+
+            # crchigh ^= a &= 0x1f
+            a &= 0x1F
+            crchigh ^= a
+
+            # a = b & 0xf0
+            a = b & 0xF0
+
+            # crchigh ^= a
+            crchigh ^= a
+
+            # if (b & 0x80) b = (b << 1) | 1; else b <<= 1
+            if b & 0x80:
+                b = (b << 1) | 1
+            else:
+                b <<= 1
+            b &= 0xFF  # Keep it 8-bit
+
+            # crclow ^= b &= 0xe0
+            b &= 0xE0
+            crclow ^= b
+
+            # Ensure 8-bit values
+            crchigh &= 0xFF
+            crclow &= 0xFF
+
+        # Combine into 16-bit CRC
+        crc = (crchigh << 8) | crclow
+        return crc
+
     def update_file_size(self):
         """
         Update the file size field in the header.
@@ -58,6 +135,56 @@ class SCPAnonymizer:
         file_size = len(self.data)
         self.data[2:6] = struct.pack('<I', file_size)
         logger.info(f"Updated file size: {file_size} bytes")
+
+    def update_section_crcs(self):
+        """
+        Recalculate and update all section CRCs in the file.
+        Each section structure: CRC(2) + ID(2) + Size(4) + Version(1) + Protocol(1) + Reserved(6) + Data
+        The section CRC covers everything from ID onwards (excluding the CRC field itself).
+        Sections are laid out sequentially in the file.
+        """
+        pointer = 6  # Skip file CRC (2 bytes) and file size (4 bytes)
+        sections_updated = 0
+
+        try:
+            # Parse sections sequentially
+            while pointer < len(self.data) - 16:
+                # Read section header
+                section_crc_offset = pointer
+                section_id = struct.unpack('<H', self.data[pointer+2:pointer+4])[0]
+                section_length = struct.unpack('<I', self.data[pointer+4:pointer+8])[0]
+
+                # Validate section
+                if section_length == 0 or section_length > len(self.data) - pointer:
+                    break
+
+                # Calculate CRC for this section (from byte 2 onwards: ID + Length + rest)
+                section_data = self.data[pointer+2:pointer+section_length]
+                new_section_crc = self.calculate_scp_section_crc(section_data)
+
+                # Update section CRC
+                old_crc = struct.unpack('<H', self.data[pointer:pointer+2])[0]
+                self.data[pointer:pointer+2] = struct.pack('<H', new_section_crc)
+
+                logger.info(f"Section {section_id} at offset {pointer}: CRC 0x{old_crc:04X} -> 0x{new_section_crc:04X}")
+                sections_updated += 1
+
+                # Move to next section
+                pointer += section_length
+
+                # Safety check: if we've processed more than 20 sections, something is wrong
+                if sections_updated > 20:
+                    logger.warning("Processed more than 20 sections, stopping")
+                    break
+
+            if sections_updated > 0:
+                self.changes_made.append(f"Updated {sections_updated} section CRCs")
+                logger.info(f"Updated {sections_updated} section CRCs")
+
+        except Exception as e:
+            logger.warning(f"Error updating section CRCs: {e}")
+            import traceback
+            traceback.print_exc()
 
     def update_crc(self):
         """
@@ -71,8 +198,8 @@ class SCPAnonymizer:
         # Store CRC in little-endian format at bytes 0-1
         self.data[0:2] = struct.pack('<H', new_crc)
 
-        self.changes_made.append(f"Updated CRC checksum to 0x{new_crc:04X}")
-        logger.info(f"Recalculated CRC: 0x{new_crc:04X}")
+        self.changes_made.append(f"Updated file CRC checksum to 0x{new_crc:04X}")
+        logger.info(f"Recalculated file CRC: 0x{new_crc:04X}")
         
     def read_file(self):
         """Read the SCP file into memory"""
@@ -242,9 +369,10 @@ class SCPAnonymizer:
         if output_path is None:
             output_path = self.anonymize_filename()
 
-        # Update file size and CRC before saving
+        # Update file size, section CRCs, and file CRC before saving
         self.update_file_size()
-        self.update_crc()
+        self.update_section_crcs()  # Update section CRCs first
+        self.update_crc()  # Then update file CRC which covers everything
 
         with open(output_path, 'wb') as f:
             f.write(self.data)
