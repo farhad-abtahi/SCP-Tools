@@ -50,6 +50,15 @@ class SCPAnonymizer:
                 crc &= 0xFFFF
         return crc
 
+    def update_file_size(self):
+        """
+        Update the file size field in the header.
+        The file size is stored at bytes 2-5 (4 bytes, little-endian).
+        """
+        file_size = len(self.data)
+        self.data[2:6] = struct.pack('<I', file_size)
+        logger.info(f"Updated file size: {file_size} bytes")
+
     def update_crc(self):
         """
         Recalculate and update the CRC checksum in the file.
@@ -211,9 +220,9 @@ class SCPAnonymizer:
                         self.data[value_start:value_end] = anon_bytes
                         self.changes_made.append(f"Anonymized {sensitive_tags[tag]}")
                     elif tag in [6, 7, 8, 9]:  # Names
-                        # Replace with REMOVED
-                        self.data[value_start:value_end] = b'REMOVED\x00' * (tag_length // 8 + 1)
-                        self.data[value_start:value_end] = self.data[value_start:value_end][:tag_length]
+                        # Replace with REMOVED (properly sized to avoid expanding bytearray)
+                        removed_bytes = (b'REMOVED\x00' * (tag_length // 8 + 1))[:tag_length]
+                        self.data[value_start:value_end] = removed_bytes
                         self.changes_made.append(f"Anonymized {sensitive_tags[tag]}")
                     elif tag == 10:  # Date of birth
                         # Set to 1900-01-01
@@ -233,7 +242,8 @@ class SCPAnonymizer:
         if output_path is None:
             output_path = self.anonymize_filename()
 
-        # Recalculate CRC before saving
+        # Update file size and CRC before saving
+        self.update_file_size()
         self.update_crc()
 
         with open(output_path, 'wb') as f:
