@@ -26,6 +26,44 @@ class SCPAnonymizer:
         self.data = bytearray()
         self.anonymous_id = anonymous_id or "ANON000000"
         self.changes_made = []
+
+    @staticmethod
+    def calculate_crc_ccitt(data):
+        """
+        Calculate CRC-CCITT checksum for SCP-ECG files.
+        Uses polynomial 0x1021 with initial value 0xFFFF.
+
+        Args:
+            data: bytes or bytearray to calculate CRC for (excludes the CRC field itself)
+
+        Returns:
+            16-bit CRC value
+        """
+        crc = 0xFFFF
+        for byte in data:
+            crc ^= (byte << 8)
+            for _ in range(8):
+                if crc & 0x8000:
+                    crc = (crc << 1) ^ 0x1021
+                else:
+                    crc = crc << 1
+                crc &= 0xFFFF
+        return crc
+
+    def update_crc(self):
+        """
+        Recalculate and update the CRC checksum in the file.
+        The CRC is stored in the first 2 bytes (little-endian) and covers
+        all data from byte 2 onwards.
+        """
+        # Calculate CRC on all data except the first 2 bytes (the CRC field itself)
+        new_crc = self.calculate_crc_ccitt(self.data[2:])
+
+        # Store CRC in little-endian format at bytes 0-1
+        self.data[0:2] = struct.pack('<H', new_crc)
+
+        self.changes_made.append(f"Updated CRC checksum to 0x{new_crc:04X}")
+        logger.info(f"Recalculated CRC: 0x{new_crc:04X}")
         
     def read_file(self):
         """Read the SCP file into memory"""
@@ -194,10 +232,13 @@ class SCPAnonymizer:
         """Save the anonymized file"""
         if output_path is None:
             output_path = self.anonymize_filename()
-        
+
+        # Recalculate CRC before saving
+        self.update_crc()
+
         with open(output_path, 'wb') as f:
             f.write(self.data)
-        
+
         print(f"\nAnonymized file saved as: {output_path}")
         return output_path
     
