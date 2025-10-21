@@ -21,10 +21,21 @@ except ImportError:
     logger = setup_logging('scp_anonymizer')
 
 class SCPAnonymizer:
-    def __init__(self, filepath, anonymous_id=None):
+    def __init__(self, filepath, anonymous_id=None, anonymize_datetime=True, anonymize_freetext=True):
+        """
+        Initialize SCP-ECG file anonymizer.
+
+        Args:
+            filepath: Path to the SCP file to anonymize
+            anonymous_id: Anonymous ID to use (default: ANON000000)
+            anonymize_datetime: If True, replace acquisition date/time with dummy values (default: True)
+            anonymize_freetext: If True, remove free text and medical history fields (default: True)
+        """
         self.filepath = filepath
         self.data = bytearray()
         self.anonymous_id = anonymous_id or "ANON000000"
+        self.anonymize_datetime = anonymize_datetime
+        self.anonymize_freetext = anonymize_freetext
         self.changes_made = []
 
     @staticmethod
@@ -314,53 +325,105 @@ class SCPAnonymizer:
                 pointer += 1
                 
     def _anonymize_section_1_tags(self, start_offset, length):
-        """Anonymize specific tags in Section 1"""
+        """
+        Anonymize specific tags in Section 1.
+        Respects anonymize_datetime and anonymize_freetext configuration flags.
+        """
         pointer = start_offset
         end = min(start_offset + length, len(self.data))
-        
+
+        # All sensitive tags that can be anonymized
         sensitive_tags = {
+            0: "Last name",
+            1: "First name",
             2: "Patient ID",
+            5: "Date of birth",
             6: "Last name",
-            7: "First name", 
+            7: "First name",
             8: "Last name",
             9: "First name",
-            10: "Date of birth"
+            10: "Date of birth",
+            21: "Latest confirming physician",
+            22: "Technician description",
+            25: "Acquisition date",
+            26: "Acquisition time",
+            30: "Free text field",
+            31: "Medical history codes"
         }
-        
+
         while pointer < end - 3:
             try:
                 tag = self.data[pointer]
                 if tag == 255:  # Section terminator
                     break
-                    
+
                 tag_length = struct.unpack('<H', self.data[pointer+1:pointer+3])[0]
-                
+
+                # Check if this tag should be anonymized
+                should_anonymize = False
+
                 if tag in sensitive_tags:
+                    # Always anonymize patient identifiers (ID, names, DOB)
+                    if tag in [0, 1, 2, 5, 6, 7, 8, 9, 10]:
+                        should_anonymize = True
+                    # Anonymize physician/technician names
+                    elif tag in [21, 22]:
+                        should_anonymize = True
+                    # Conditionally anonymize datetime
+                    elif tag in [25, 26] and self.anonymize_datetime:
+                        should_anonymize = True
+                    # Conditionally anonymize freetext
+                    elif tag in [30, 31] and self.anonymize_freetext:
+                        should_anonymize = True
+
+                if should_anonymize:
                     # Anonymize this field
                     value_start = pointer + 3
                     value_end = min(value_start + tag_length, len(self.data))
-                    
+
                     if tag == 2:  # Patient ID
                         # Replace with anonymous ID
                         anon_bytes = self.anonymous_id.encode('ascii')[:tag_length]
                         anon_bytes += b'\x00' * (tag_length - len(anon_bytes))
                         self.data[value_start:value_end] = anon_bytes
                         self.changes_made.append(f"Anonymized {sensitive_tags[tag]}")
-                    elif tag in [6, 7, 8, 9]:  # Names
+                    elif tag in [0, 1, 6, 7, 8, 9]:  # Names
                         # Replace with REMOVED (properly sized to avoid expanding bytearray)
                         removed_bytes = (b'REMOVED\x00' * (tag_length // 8 + 1))[:tag_length]
                         self.data[value_start:value_end] = removed_bytes
                         self.changes_made.append(f"Anonymized {sensitive_tags[tag]}")
-                    elif tag == 10:  # Date of birth
+                    elif tag in [5, 10]:  # Date of birth
                         # Set to 1900-01-01
                         if tag_length >= 4:
                             self.data[value_start:value_start+2] = struct.pack('>H', 1900)
                             self.data[value_start+2] = 1  # Month
                             self.data[value_start+3] = 1  # Day
                             self.changes_made.append(f"Anonymized {sensitive_tags[tag]}")
-                
+                    elif tag == 25:  # Acquisition date
+                        # Set to 2000-01-01
+                        if tag_length >= 4:
+                            self.data[value_start:value_start+2] = struct.pack('>H', 2000)
+                            self.data[value_start+2] = 1  # Month
+                            self.data[value_start+3] = 1  # Day
+                            self.changes_made.append(f"Anonymized {sensitive_tags[tag]}")
+                    elif tag == 26:  # Acquisition time
+                        # Set to 00:00:00
+                        if tag_length >= 3:
+                            self.data[value_start] = 0     # Hour
+                            self.data[value_start+1] = 0   # Minute
+                            self.data[value_start+2] = 0   # Second
+                            self.changes_made.append(f"Anonymized {sensitive_tags[tag]}")
+                    elif tag in [21, 22]:  # Physician/Technician names
+                        # Zero out the field
+                        self.data[value_start:value_end] = b'\x00' * tag_length
+                        self.changes_made.append(f"Anonymized {sensitive_tags[tag]}")
+                    elif tag in [30, 31]:  # Free text and medical history
+                        # Zero out the field
+                        self.data[value_start:value_end] = b'\x00' * tag_length
+                        self.changes_made.append(f"Anonymized {sensitive_tags[tag]}")
+
                 pointer += 3 + tag_length
-                
+
             except Exception as e:
                 pointer += 1
     
