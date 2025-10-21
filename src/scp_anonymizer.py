@@ -298,29 +298,30 @@ class SCPAnonymizer:
     def _anonymize_section_1(self):
         """Specifically handle Section 1 which contains patient demographics"""
         # Try to find section 1 markers
-        # Section 1 typically starts after the section pointer table
-        
+        # Section format: CRC(2) + ID(2) + Size(4) + Version(1) + Protocol(1) + Reserved(6) + Data
+
         # Look for the section pointer pattern
-        pointer = 6  # Skip CRC and file size
-        
-        while pointer < len(self.data) - 10:
+        pointer = 6  # Skip file CRC (2) and file size (4)
+
+        while pointer < len(self.data) - 16:
             try:
-                # Try to read section header
-                section_id = struct.unpack('<H', self.data[pointer:pointer+2])[0]
-                section_size = struct.unpack('<I', self.data[pointer+2:pointer+6])[0]
-                
+                # Read section header: CRC(2) + ID(2) + Size(4) + ...
+                section_id = struct.unpack('<H', self.data[pointer+2:pointer+4])[0]
+                section_size = struct.unpack('<I', self.data[pointer+4:pointer+8])[0]
+
                 # Section 1 is patient/device data
                 if section_id == 1 and section_size < len(self.data):
-                    print(f"Found Section 1 at offset {pointer}")
-                    self._anonymize_section_1_tags(pointer + 8, section_size - 8)
+                    print(f"Found Section 1 at offset {pointer}, size {section_size}")
+                    # Tags start after 16-byte header: CRC(2) + ID(2) + Size(4) + Version(1) + Protocol(1) + Reserved(6)
+                    self._anonymize_section_1_tags(pointer + 16, section_size - 16)
                     break
-                    
+
                 # Move to next potential section
                 if section_size > 0 and section_size < len(self.data):
                     pointer += section_size
                 else:
                     pointer += 1
-                    
+
             except:
                 pointer += 1
                 

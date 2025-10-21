@@ -41,6 +41,7 @@ anonymizer.anonymize('study_ecg.SCP')
   - [Anonymizing Files](#anonymizing-files)
   - [What Gets Anonymized?](#what-gets-anonymized)
   - [Batch Anonymization](#batch-anonymization)
+  - [Verifying Anonymization](#verifying-anonymization)
   - [Example Use Cases](#example-use-cases)
 - [API Documentation](#-api-documentation)
 - [Testing](#-testing)
@@ -50,6 +51,7 @@ anonymizer.anonymize('study_ecg.SCP')
 - [Performance](#-performance)
 - [Limitations](#-limitations)
 - [Security & Privacy](#-security--privacy)
+  - [Anonymization & Compliance Guide](docs/ANONYMIZATION_COMPLIANCE.md)
 - [Architecture Diagrams](docs/diagrams.md)
 - [Contributing](#-contributing)
 - [Author](#-author)
@@ -86,6 +88,11 @@ anonymizer.anonymize('study_ecg.SCP')
   - File-level CRC-CCITT checksum
   - Section-level CRCs for all sections
 - **Generates mapping file** for re-identification if needed
+- **Verification tool** with 9 comprehensive PHI detection checks:
+  - Section 1 tag validation
+  - Pattern matching (names, dates, SSN, phone, email)
+  - Signal data integrity verification
+  - File structure validation
 
 ## 📁 Project Structure
 
@@ -96,6 +103,7 @@ scp-ecg-tools/
 │   ├── __init__.py
 │   ├── scp_reader.py        # SCP file reader and visualizer
 │   ├── scp_anonymizer.py    # Patient data anonymizer
+│   ├── anonymization_verifier.py  # Anonymization verification tool
 │   └── logging_config.py    # Logging configuration
 │
 ├── data/                    # Data files
@@ -113,7 +121,8 @@ scp-ecg-tools/
 │   └── test_scp_tools.py
 │
 ├── docs/                    # Documentation
-│   └── diagrams.md         # Architecture diagrams
+│   ├── diagrams.md         # Architecture diagrams
+│   └── ANONYMIZATION_COMPLIANCE.md  # HIPAA/GDPR compliance guide
 │
 ├── generate_pngs.py        # Batch PNG generator
 ├── view_logs.py           # Log viewer utility
@@ -483,6 +492,72 @@ python ../../src/scp_anonymizer.py
 # 4. Anonymize all files with default (full) settings
 ```
 
+#### Verifying Anonymization
+
+After anonymizing files, verify that all PHI has been properly removed:
+
+```bash
+# Verify a single anonymized file
+python src/anonymization_verifier.py data/original/anonymized/ECG_ANON000001.SCP
+
+# Verify with original file comparison (recommended)
+python src/anonymization_verifier.py \
+    data/original/anonymized/ECG_ANON000001.SCP \
+    data/original/patient_ecg.SCP
+
+# Batch verification
+for file in data/original/anonymized/*.SCP; do
+    echo "Verifying: $file"
+    python src/anonymization_verifier.py "$file"
+done
+```
+
+The verifier performs 9 comprehensive checks:
+
+1. **Section 1 Tag Verification** - Validates all sensitive tags are properly anonymized
+2. **Name Pattern Search** - Searches for common name patterns in the entire file
+3. **Date Pattern Search** - Looks for date formats (MM/DD/YYYY, etc.)
+4. **SSN Pattern Search** - Detects Social Security Number patterns
+5. **Phone Number Search** - Finds phone number patterns
+6. **Email Address Search** - Detects email addresses
+7. **Numeric ID Search** - Finds suspicious long numeric sequences
+8. **Signal Data Integrity** - Verifies ECG waveforms are byte-identical to original
+9. **File Structure Check** - Validates file integrity and CRC checksums
+
+**Example output:**
+```
+Anonymization Verification Report
+================================================================================
+File: data/original/anonymized/ECG_20060620_112352_ANON000012.SCP
+
+✓ PASSED CHECKS
+--------------------------------------------------------------------------------
+Section 1 Tag Verification
+  ✓ Tag 0 (Last name): "REMOVED" - anonymized
+  ✓ Tag 2 (Patient ID): ANON000012 - anonymized
+  ✓ Tag 5 (Date of birth): 1900-01-01 - anonymized
+  ✓ Tag 25 (Acquisition date): 2000-01-01 - anonymized
+  ✓ Tag 26 (Acquisition time): 00:00:00 - anonymized
+
+Signal Data Integrity
+  ✓ Section 3 (Leads): Byte-identical to original
+  ✓ Section 6 (Rhythm): Byte-identical to original
+
+File Structure
+  ✓ Valid CRC checksums
+  ✓ File size preserved
+
+⚠ WARNINGS
+--------------------------------------------------------------------------------
+None
+
+✗ ISSUES
+--------------------------------------------------------------------------------
+None
+
+VERDICT: ✅ ANONYMIZATION VERIFIED
+```
+
 #### Example Use Cases
 
 **Use Case 1: Public Dataset for Machine Learning**
@@ -800,6 +875,10 @@ All 10 sections validated ✓
 - Maximum 12 leads (standard clinical ECG)
 
 ## 🔒 Security & Privacy
+
+> **📘 For comprehensive compliance documentation, see [Anonymization & Compliance Guide](docs/ANONYMIZATION_COMPLIANCE.md)**
+>
+> This guide includes detailed HIPAA/GDPR compliance information, verification procedures, risk assessments, and regulatory references.
 
 ### HIPAA Compliance
 
