@@ -426,11 +426,16 @@ print(anonymizer.changes_made)
 
 **Configurable anonymization:**
 - `anonymize_datetime=True` (default):
-  - Acquisition date → Set to 2000-01-01
-  - Acquisition time → Set to 00:00:00
+  - Acquisition date → Replaced with 2000-01-01
+  - Acquisition time → Replaced with 00:00:00
+  - **Note:** Tags are never removed, only replaced with dummy data (required by Idoven API)
+- `anonymize_datetime=False`:
+  - Acquisition date/time → Preserved (original values kept)
 - `anonymize_freetext=True` (default):
   - Free text field → Zeroed out
   - Medical history codes → Zeroed out
+- `anonymize_freetext=False`:
+  - Free text and medical history → Preserved
 
 **Always preserved (100% byte-identical):**
 - ECG waveform data (Section 6)
