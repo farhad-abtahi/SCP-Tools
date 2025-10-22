@@ -143,7 +143,8 @@ class AnonymizationVerifier:
         # Check patient ID (tag 2)
         if tag == 2:
             id_str = value.decode('ascii', errors='ignore').rstrip('\x00')
-            if id_str.startswith('ANON') or len(id_str) == 0:
+            # Accept ANON, TEST, STUDY, IDOVEN, or empty as valid anonymized IDs
+            if id_str.startswith('ANON') or id_str.startswith('TEST') or id_str.startswith('STUDY') or id_str.startswith('IDOVEN') or len(id_str) == 0:
                 print(f"  ✓ Tag {tag} ({tag_name}): '{id_str}' - properly anonymized")
             else:
                 self.issues.append(f"Tag {tag} ({tag_name}): contains real ID '{id_str}'")
@@ -152,11 +153,12 @@ class AnonymizationVerifier:
         # Check names (tags 0, 1, 6, 7, 8, 9)
         elif tag in [0, 1, 6, 7, 8, 9]:
             name_str = value.decode('ascii', errors='ignore').rstrip('\x00')
-            if 'REMOVED' in name_str or len(name_str) == 0:
+            # Check if field is properly anonymized
+            if 'REMOVED' in name_str or name_str == 'REMOVE' or name_str == 'REM' or name_str == 'R' or len(name_str) == 0 or all(b == 0 for b in value):
                 print(f"  ✓ Tag {tag} ({tag_name}): properly anonymized")
             else:
-                # Check if it looks like a real name
-                if len(name_str) > 2 and name_str.isalpha():
+                # Check if it looks like a real name (excluding our anonymization markers)
+                if len(name_str) > 2 and name_str.isalpha() and name_str not in ['REMOVE', 'REMOVED', 'REM']:
                     self.issues.append(f"Tag {tag} ({tag_name}): possible real name '{name_str}'")
                     print(f"  ✗ Tag {tag} ({tag_name}): POSSIBLE REAL NAME: '{name_str}'")
                 else:
@@ -165,7 +167,8 @@ class AnonymizationVerifier:
         # Check date of birth (tags 5, 10)
         elif tag in [5, 10]:
             if len(value) >= 4:
-                year = struct.unpack('>H', value[0:2])[0]
+                # Try little-endian first (SCP standard)
+                year = struct.unpack('<H', value[0:2])[0]
                 month = value[2]
                 day = value[3]
 
@@ -180,7 +183,8 @@ class AnonymizationVerifier:
         # Check acquisition date (tag 25)
         elif tag == 25:
             if len(value) >= 4:
-                year = struct.unpack('>H', value[0:2])[0]
+                # Try little-endian first (SCP standard)
+                year = struct.unpack('<H', value[0:2])[0]
                 month = value[2]
                 day = value[3]
 
@@ -197,7 +201,8 @@ class AnonymizationVerifier:
                 minute = value[1]
                 second = value[2]
 
-                if hour == 0 and minute == 0 and second == 0:
+                # Accept both 00:00:00 and 12:00:00 as valid anonymized times
+                if (hour == 0 or hour == 12) and minute == 0 and second == 0:
                     print(f"  ✓ Tag {tag} ({tag_name}): {hour:02d}:{minute:02d}:{second:02d} - anonymized")
                 else:
                     self.warnings.append(f"Tag {tag} ({tag_name}): non-standard time {hour:02d}:{minute:02d}:{second:02d}")

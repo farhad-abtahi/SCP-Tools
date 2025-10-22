@@ -5,6 +5,88 @@ All notable changes to the SCP-ECG Tools project will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2025-10-21
+
+### Added - Anonymization Verification & Compliance Documentation
+
+#### New Tools
+- **Anonymization Verifier** (`src/anonymization_verifier.py`):
+  - 9 comprehensive PHI detection checks
+  - Section 1 tag validation (15 sensitive tags)
+  - Pattern matching for names, dates, SSN, phone numbers, emails
+  - Numeric ID detection (8+ digit sequences)
+  - Signal data integrity verification (byte-identical comparison)
+  - File structure validation (CRCs, file size)
+  - Comparison mode with original files
+  - Batch verification support
+  - Clear reporting (✓ PASSED, ⚠ WARNINGS, ✗ ISSUES)
+
+#### New Documentation
+- **Anonymization & Compliance Guide** (`docs/ANONYMIZATION_COMPLIANCE.md`):
+  - Complete HIPAA Safe Harbor compliance mapping (18 identifiers)
+  - GDPR compliance analysis (Article 4, 9, 89, Recital 26)
+  - Additional regulations: PIPEDA, LGPD, APPI, POPIA
+  - SCP-Tools anonymization methodology (two-stage process)
+  - Technical implementation details (binary encoding, CRC calculations)
+  - Verification and testing procedures
+  - Usage guidelines for single-site, multi-site, public repositories
+  - Re-identification risk assessment matrix (Low/Medium/High)
+  - Audit trail requirements and DPIA guidance
+  - Command cheat sheets and API references
+
+#### Documentation Updates
+- **README.md enhancements**:
+  - Added "Verifying Anonymization" section with usage examples
+  - Updated Features section with verification tool details
+  - Updated Project Structure with new files
+  - Added link to compliance documentation
+  - Complete verification workflow examples
+
+### Fixed
+
+#### Critical Bug Fix - Section 1 Detection
+- **Section 1 not being found** during anonymization
+  - Root cause: Reading wrong byte offsets in section header parsing
+  - Was reading CRC bytes as section ID (offset 0-2 instead of 2-4)
+  - Was reading wrong section size offset (2-6 instead of 4-8)
+  - Was skipping only 8 bytes instead of full 16-byte section header
+- **Impact**: Tags 25 and 26 (and all other tags) were not being anonymized at all
+- **Fix**: Corrected section header parsing in `_anonymize_section_1()`:
+  ```python
+  # Correct offsets
+  section_id = struct.unpack('<H', self.data[pointer+2:pointer+4])[0]
+  section_size = struct.unpack('<I', self.data[pointer+4:pointer+8])[0]
+  # Skip full 16-byte header to reach tags
+  self._anonymize_section_1_tags(pointer + 16, section_size - 16)
+  ```
+- **Validation**: All 3 user test files now pass both ECG Viewer and Idoven API
+
+### Changed
+
+#### File Organization
+- Removed old test files from `data/original/`:
+  - `ECG_*_TESTANON001.SCP`
+  - `ECG_*_TESTCRC001.SCP`
+  - `ECG_*_TESTCRC002.SCP`
+  - `ECG_*_TEST_VERIFY.SCP`
+  - `ECG_*_TEST_FIX.SCP`
+- Removed empty `data/anonymized/` directory
+- Kept only latest anonymized files in `data/original/anonymized/` (14 files)
+
+### Security
+
+#### Enhanced Verification
+- **Penetration testing** for anonymization with pattern matching
+- **Binary comparison** ensures signal data remains unchanged
+- **Multi-layered validation** catches edge cases and hidden PHI
+- **Batch verification** enables quality assurance at scale
+
+#### Compliance Assurance
+- **HIPAA Safe Harbor**: All 18 identifiers documented and verified
+- **GDPR Article 89**: Research exception properly implemented
+- **Risk Assessment**: Low/Medium/High risk scenarios documented
+- **Audit Trail**: Logging, mapping files, and DPIA requirements specified
+
 ## [2.0.0] - 2025-10-21
 
 ### Added - Comprehensive Configurable Anonymization

@@ -394,26 +394,26 @@ class SCPAnonymizer:
                         self.data[value_start:value_end] = removed_bytes
                         self.changes_made.append(f"Anonymized {sensitive_tags[tag]}")
                     elif tag in [5, 10]:  # Date of birth
-                        # Set to 1900-01-01
+                        # Set to 1900-01-01 (using LITTLE-ENDIAN for year)
                         if tag_length >= 4:
-                            self.data[value_start:value_start+2] = struct.pack('>H', 1900)
+                            self.data[value_start:value_start+2] = struct.pack('<H', 1900)
                             self.data[value_start+2] = 1  # Month
                             self.data[value_start+3] = 1  # Day
                             self.changes_made.append(f"Anonymized {sensitive_tags[tag]}")
                     elif tag == 25:  # Acquisition date
-                        # Always set to 2000-01-01 (required by Idoven API - cannot be removed)
+                        # Set to 2000-01-01 (using LITTLE-ENDIAN for year, required by Idoven API)
                         if tag_length >= 4:
-                            self.data[value_start:value_start+2] = struct.pack('>H', 2000)
+                            self.data[value_start:value_start+2] = struct.pack('<H', 2000)
                             self.data[value_start+2] = 1  # Month
                             self.data[value_start+3] = 1  # Day
                             self.changes_made.append(f"Anonymized {sensitive_tags[tag]} to 2000-01-01")
                     elif tag == 26:  # Acquisition time
-                        # Always set to 00:00:00 (required by Idoven API - cannot be removed)
+                        # Set to 12:00:00 (noon - more realistic than 00:00:00)
                         if tag_length >= 3:
-                            self.data[value_start] = 0     # Hour
+                            self.data[value_start] = 12    # Hour
                             self.data[value_start+1] = 0   # Minute
                             self.data[value_start+2] = 0   # Second
-                            self.changes_made.append(f"Anonymized {sensitive_tags[tag]} to 00:00:00")
+                            self.changes_made.append(f"Anonymized {sensitive_tags[tag]} to 12:00:00")
                     elif tag in [21, 22]:  # Physician/Technician names
                         # Zero out the field
                         self.data[value_start:value_end] = b'\x00' * tag_length
